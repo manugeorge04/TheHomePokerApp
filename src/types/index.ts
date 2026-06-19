@@ -31,6 +31,7 @@ export interface SessionPlayer {
   result: number | null;
   position: number | null;
   joined_at: string;
+  is_cohost: boolean;
 }
 
 export interface BuyIn {

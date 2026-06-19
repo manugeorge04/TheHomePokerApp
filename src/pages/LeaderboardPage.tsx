@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Avatar from '@mui/material/Avatar';
@@ -9,6 +11,7 @@ import Tab from '@mui/material/Tab';
 import LinearProgress from '@mui/material/LinearProgress';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { supabase } from '../lib/supabase';
 
 interface LeaderEntry {
@@ -27,6 +30,7 @@ function formatMoney(val: number) {
 const RANK_COLORS = ['#fbbf24', '#94a3b8', '#cd7f32'];
 
 export default function LeaderboardPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [profitBoard, setProfitBoard] = useState<LeaderEntry[]>([]);
   const [roiBoard, setRoiBoard] = useState<LeaderEntry[]>([]);
@@ -147,47 +151,52 @@ export default function LeaderboardPage() {
                 border: idx < 3 ? `1px solid ${RANK_COLORS[idx]}40` : '1px solid rgba(74,222,128,0.1)',
               }}
             >
-              <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Typography
-                    variant="h6"
-                    fontWeight={800}
-                    sx={{ width: 28, color: idx < 3 ? RANK_COLORS[idx] : 'text.secondary', fontSize: idx < 3 ? '1.2rem' : '1rem' }}
-                  >
-                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                  </Typography>
-                  <Avatar
-                    sx={{ bgcolor: idx < 3 ? RANK_COLORS[idx] : 'primary.dark', width: 36, height: 36, fontSize: '0.875rem', fontWeight: 700, color: '#000' }}
-                  >
-                    {entry.display_name[0].toUpperCase()}
-                  </Avatar>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2" fontWeight={700}>{entry.display_name}</Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min((Math.abs(entry.value) / maxVal) * 100, 100)}
-                      sx={{
-                        mt: 0.5,
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: idx < 3 ? RANK_COLORS[idx] : 'primary.main',
-                        },
-                      }}
-                    />
-                  </Box>
-                  <Box sx={{ textAlign: 'right', minWidth: 72 }}>
+              <CardActionArea onClick={() => navigate(`/player/${entry.user_id}`)}>
+                <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Typography
-                      variant="body2"
+                      variant="h6"
                       fontWeight={800}
-                      sx={{ color: tab === 2 ? 'text.primary' : entry.value >= 0 ? 'success.main' : 'error.main' }}
+                      sx={{ width: 28, color: idx < 3 ? RANK_COLORS[idx] : 'text.secondary', fontSize: idx < 3 ? '1.2rem' : '1rem' }}
                     >
-                      {formatValue(entry.value, tab)}
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {entry.sessions} sess.
-                    </Typography>
+                    <Avatar
+                      sx={{ bgcolor: idx < 3 ? RANK_COLORS[idx] : 'primary.dark', width: 36, height: 36, fontSize: '0.875rem', fontWeight: 700, color: '#000' }}
+                    >
+                      {entry.display_name[0].toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" fontWeight={700}>{entry.display_name}</Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min((Math.abs(entry.value) / maxVal) * 100, 100)}
+                        sx={{
+                          mt: 0.5,
+                          '& .MuiLinearProgress-bar': {
+                            bgcolor: idx < 3 ? RANK_COLORS[idx] : 'primary.main',
+                          },
+                        }}
+                      />
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={800}
+                          sx={{ color: tab === 2 ? 'text.primary' : entry.value >= 0 ? 'success.main' : 'error.main' }}
+                        >
+                          {formatValue(entry.value, tab)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {entry.sessions} sess.
+                        </Typography>
+                      </Box>
+                      <ChevronRightIcon sx={{ color: 'text.disabled', fontSize: 18 }} />
+                    </Box>
                   </Box>
-                </Box>
-              </CardContent>
+                </CardContent>
+              </CardActionArea>
             </Card>
           ))}
         </Box>

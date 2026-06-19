@@ -24,7 +24,7 @@ export default function CashOutPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<SessionPlayer[]>([]);
-  const [isHost, setIsHost] = useState(false);
+  const [isHostOrCohost, setIsHostOrCohost] = useState(false);
   const [cashouts, setCashouts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
@@ -35,14 +35,18 @@ export default function CashOutPage() {
     const { data: s } = await supabase.from('sessions').select('*').eq('id', sessionId).single();
     if (!s) return;
     setSession(s as Session);
-    setIsHost(s.host_id === user?.id);
 
     const { data: playerRows } = await supabase
       .from('session_players')
       .select('*')
       .eq('session_id', sessionId)
       .order('joined_at');
-    setPlayers((playerRows ?? []) as SessionPlayer[]);
+    const playerList = (playerRows ?? []) as SessionPlayer[];
+    setPlayers(playerList);
+
+    // Check if current user is host or co-host
+    const currentPlayer = playerList.find((p) => p.user_id === user?.id);
+    setIsHostOrCohost(s.host_id === user?.id || (currentPlayer?.is_cohost ?? false));
 
     const { data: cashoutRows } = await supabase
       .from('cash_outs')
@@ -119,7 +123,7 @@ export default function CashOutPage() {
     }
   }
 
-  const canEdit = (p: SessionPlayer) => isHost || p.user_id === user?.id;
+  const canEdit = (p: SessionPlayer) => isHostOrCohost || p.user_id === user?.id;
 
   return (
     <Box sx={{ pb: 10 }}>
@@ -221,7 +225,7 @@ export default function CashOutPage() {
           })}
         </Box>
 
-        {isHost && players.length > 0 && (
+        {isHostOrCohost && players.length > 0 && (
           <Button
             variant="contained"
             color="secondary"

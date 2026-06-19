@@ -26,6 +26,9 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import ShieldIcon from '@mui/icons-material/Shield';
+import AddModeratorIcon from '@mui/icons-material/AddModerator';
+import RemoveModeratorIcon from '@mui/icons-material/RemoveModerator';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import type { Session, SessionPlayer } from '../types';
@@ -42,6 +45,7 @@ export default function SessionLobbyPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<PlayerWithBuyins[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [isHostOrCohost, setIsHostOrCohost] = useState(false);
   const [copySnack, setCopySnack] = useState(false);
   const [rebuyOpen, setRebuyOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
@@ -63,7 +67,8 @@ export default function SessionLobbyPage() {
     const { data: s } = await supabase.from('sessions').select('*').eq('id', sessionId).single();
     if (!s) return;
     setSession(s as Session);
-    setIsHost(s.host_id === user?.id);
+    const host = s.host_id === user?.id;
+    setIsHost(host);
 
     const { data: playerRows } = await supabase
       .from('session_players')
@@ -80,13 +85,17 @@ export default function SessionLobbyPage() {
       const pBuyins = (buyinRows ?? []).filter((b) => b.session_player_id === p.id);
       return {
         ...p,
-        buyins: pBuyins.length > 0 
+        buyins: pBuyins.length > 0
           ? pBuyins.reduce((sum: number, b) => sum + Number(b.amount), 0)
           : Number(p.total_buyin || 0),
         rebuyCount: pBuyins.filter((b) => b.is_rebuy).length,
       };
     });
     setPlayers(enriched);
+
+    // Check if current user is host or co-host
+    const currentPlayer = enriched.find((p) => p.user_id === user?.id);
+    setIsHostOrCohost(host || (currentPlayer?.is_cohost ?? false));
   }, [sessionId, user?.id]);
 
   useEffect(() => {
@@ -224,6 +233,24 @@ export default function SessionLobbyPage() {
     }
   }
 
+  async function handleToggleCohost(player: PlayerWithBuyins) {
+    if (!isHost) return;
+    setLoading(true);
+    try {
+      await supabase
+        .from('session_players')
+        .update({ is_cohost: !player.is_cohost })
+        .eq('id', player.id);
+
+      // Update local state
+      setPlayers((prev) => prev.map((p) =>
+        p.id === player.id ? { ...p, is_cohost: !p.is_cohost } : p
+      ));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!session) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <Typography color="text.secondary">Loading session...</Typography>
@@ -243,23 +270,27 @@ export default function SessionLobbyPage() {
               Active Session
             </Typography>
           </Box>
-          {isHost && (
+          {(isHost || isHostOrCohost) && (
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <IconButton
-                size="small"
-                onClick={() => { setEditTitle(session.title); setEditSessionOpen(true); }}
-                title="Edit session"
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => setDeleteConfirmOpen(true)}
-                title="Delete session"
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+              {isHost && (
+                <IconButton
+                  size="small"
+                  onClick={() => { setEditTitle(session.title); setEditSessionOpen(true); }}
+                  title="Edit session"
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              )}
+              {isHost && (
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  title="Delete session"
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )}
               <Button
                 variant="outlined"
                 color="error"
@@ -319,7 +350,7 @@ export default function SessionLobbyPage() {
         {/* Players */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography variant="subtitle1" fontWeight={700}>Players</Typography>
-          {isHost && (
+          {isHostOrCohost && (
             <Button size="small" startIcon={<PersonAddIcon />} onClick={() => setAddPlayerOpen(true)}>
               Add Player
             </Button>
@@ -341,6 +372,9 @@ export default function SessionLobbyPage() {
                         {player.user_id === session.host_id && (
                           <Chip label="Host" size="small" color="secondary" sx={{ height: 18, fontSize: '0.6rem' }} />
                         )}
+                        {player.is_cohost && player.user_id !== session.host_id && (
+                          <Chip icon={<ShieldIcon sx={{ fontSize: '0.8rem !important' }} />} label="Co-Host" size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }} />
+                        )}
                       </Box>
                       <Typography variant="caption" color="text.secondary">
                         In: ${Number(player.buyins).toFixed(0)}
@@ -358,6 +392,16 @@ export default function SessionLobbyPage() {
                       <AddIcon fontSize="small" />
                     </IconButton>
                     {isHost && player.user_id !== session.host_id && (
+                      <IconButton
+                        size="small"
+                        sx={{ color: player.is_cohost ? 'primary.main' : 'text.secondary', '&:hover': { color: 'primary.main' } }}
+                        onClick={() => handleToggleCohost(player)}
+                        title={player.is_cohost ? 'Remove co-host' : 'Make co-host'}
+                      >
+                        {player.is_cohost ? <RemoveModeratorIcon fontSize="small" /> : <AddModeratorIcon fontSize="small" />}
+                      </IconButton>
+                    )}
+                    {isHostOrCohost && player.user_id !== session.host_id && (
                       <IconButton
                         size="small"
                         sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}

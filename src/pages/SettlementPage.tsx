@@ -34,46 +34,38 @@ interface Transaction {
 function calculateSettlements(
   players: { name: string; net: number }[],
 ): Transaction[] {
-  const debtors = players
-    .filter((p) => p.net < 0)
-    .map((p) => ({ ...p, net: Math.abs(p.net) }))
-    .sort((a, b) => b.net - a.net);
-
-  const creditors = players
-    .filter((p) => p.net > 0)
-    .sort((a, b) => b.net - a.net);
-
   const transactions: Transaction[] = [];
-  let dIdx = 0;
-  let cIdx = 0;
 
-  while (
-    dIdx < debtors.length &&
-    cIdx < creditors.length
-  ) {
-    const debtor = debtors[dIdx];
-    const creditor = creditors[cIdx];
-    const amountToTransfer = Math.min(
-      debtor.net,
-      creditor.net,
-    );
+  // 1. Find the Central Bank (the absolute biggest winner)
+  const bank = [...players].sort((a, b) => b.net - a.net)[0];
+  
+  if (!bank || bank.net <= 0) {
+    return []; // No winners, no math to do
+  }
 
-    if (amountToTransfer > 0.01) {
+  // 2. Route EVERYTHING through the Central Bank
+  players.forEach((player) => {
+    if (player.name === bank.name) return; // Skip the bank talking to itself
+
+    const amount = Number(Math.abs(player.net).toFixed(2));
+    if (amount <= 0.01) return; // Skip players who broke perfectly even
+
+    if (player.net < 0) {
+      // Debtor pays the Central Bank directly
       transactions.push({
-        from: debtor.name,
-        to: creditor.name,
-        amount: Number(
-          amountToTransfer.toFixed(2),
-        ),
+        from: player.name,
+        to: bank.name,
+        amount,
+      });
+    } else if (player.net > 0) {
+      // Central Bank pays the Creditor directly
+      transactions.push({
+        from: bank.name,
+        to: player.name,
+        amount,
       });
     }
-
-    debtor.net -= amountToTransfer;
-    creditor.net -= amountToTransfer;
-
-    if (debtor.net < 0.01) dIdx++;
-    if (creditor.net < 0.01) cIdx++;
-  }
+  });
 
   return transactions;
 }
@@ -97,12 +89,10 @@ export default function SettlementPage() {
     setDiscrepancyAmount,
   ] = useState(0);
 
-  // Track individual correction values to display in brackets next to names
   const [corrections, setCorrections] = useState<
     Record<string, number>
   >({});
 
-  // Toggle between 'owes' (Debtors view) and 'receives' (Creditors view)
   const [viewMode, setViewMode] = useState<
     "owes" | "receives"
   >("owes");
@@ -117,15 +107,11 @@ export default function SettlementPage() {
         .select("*")
         .eq("session_id", sessionId);
 
-      const players = (rows ??
-        []) as SessionPlayer[];
+      const players = (rows ?? []) as SessionPlayer[];
 
       let totalBuyins = 0;
       let totalCashouts = 0;
-      const localCorrections: Record<
-        string,
-        number
-      > = {};
+      const localCorrections: Record<string, number> = {};
 
       let formattedData = players.map((p) => {
         const buyin = Number(p.total_buyin ?? 0);
@@ -133,7 +119,7 @@ export default function SettlementPage() {
         totalBuyins += buyin;
         totalCashouts += cashout;
 
-        localCorrections[p.display_name] = 0; // Initialize everyone to 0
+        localCorrections[p.display_name] = 0;
 
         return {
           name: p.display_name,
@@ -152,37 +138,21 @@ export default function SettlementPage() {
           setIsGraceCorrection(true);
 
           if (diff < 0) {
-            // Missing cash: Deduct loss from the biggest winner
-            formattedData.sort(
-              (a, b) => b.net - a.net,
-            );
-            if (
-              formattedData[0] &&
-              formattedData[0].net > 0
-            ) {
+            // Missing cash: Central Bank takes the hit on their balance
+            formattedData.sort((a, b) => b.net - a.net);
+            if (formattedData[0] && formattedData[0].net > 0) {
               formattedData[0].net += diff;
-              localCorrections[
-                formattedData[0].name
-              ] = diff; // Will capture e.g. -0.30
+              localCorrections[formattedData[0].name] = diff;
             }
           } else {
-            // Extra cash: Add gain to the biggest loser
-            formattedData.sort(
-              (a, b) => a.net - b.net,
-            );
-            if (
-              formattedData[0] &&
-              formattedData[0].net < 0
-            ) {
+            // Extra cash: Central Bank gets the bonus change
+            formattedData.sort((a, b) => a.net - b.net);
+            if (formattedData[0] && formattedData[0].net < 0) {
               formattedData[0].net += diff;
-              localCorrections[
-                formattedData[0].name
-              ] = diff; // Will capture e.g. +0.30
+              localCorrections[formattedData[0].name] = diff;
             }
           }
-          setTransactions(
-            calculateSettlements(formattedData),
-          );
+          setTransactions(calculateSettlements(formattedData));
         } else {
           setIsGraceCorrection(false);
           setTransactions([]);
@@ -190,9 +160,7 @@ export default function SettlementPage() {
       } else {
         setLedgerUnbalanced(false);
         setIsGraceCorrection(false);
-        setTransactions(
-          calculateSettlements(formattedData),
-        );
+        setTransactions(calculateSettlements(formattedData));
       }
 
       setCorrections(localCorrections);
@@ -203,7 +171,6 @@ export default function SettlementPage() {
     loadSettlementData();
   }, [loadSettlementData]);
 
-  // View Grouping 1: Group by who OWES (Debtors)
   const groupedDebts = transactions.reduce(
     (groups, tx) => {
       if (!groups[tx.from]) groups[tx.from] = [];
@@ -213,7 +180,6 @@ export default function SettlementPage() {
     {} as Record<string, Transaction[]>,
   );
 
-  // View Grouping 2: Group by who RECEIVES (Creditors)
   const groupedReceipts = transactions.reduce(
     (groups, tx) => {
       if (!groups[tx.to]) groups[tx.to] = [];
@@ -223,13 +189,9 @@ export default function SettlementPage() {
     {} as Record<string, Transaction[]>,
   );
 
-  // Small string helper to show discrepancy adjustment indicators
-  const renderCorrectionLabel = (
-    name: string,
-  ) => {
+  const renderCorrectionLabel = (name: string) => {
     const val = corrections[name];
-    if (!val || Math.abs(val) < 0.001)
-      return null;
+    if (!val || Math.abs(val) < 0.001) return null;
     const formatted =
       val > 0
         ? `+$${val.toFixed(2)} extra cash`
@@ -239,10 +201,7 @@ export default function SettlementPage() {
         component="span"
         variant="caption"
         sx={{
-          color:
-            val > 0
-              ? "success.main"
-              : "warning.main",
+          color: val > 0 ? "success.main" : "warning.main",
           ml: 1,
           fontWeight: 500,
         }}
@@ -254,9 +213,7 @@ export default function SettlementPage() {
 
   if (loading)
     return (
-      <Typography
-        sx={{ p: 4, textAlign: "center" }}
-      >
+      <Typography sx={{ p: 4, textAlign: "center" }}>
         Balancing books...
       </Typography>
     );
@@ -275,9 +232,7 @@ export default function SettlementPage() {
         <Toolbar>
           <IconButton
             edge="start"
-            onClick={() =>
-              navigate(`/session/${sessionId}`)
-            }
+            onClick={() => navigate(`/session/${sessionId}`)}
             sx={{ mr: 1 }}
           >
             <ArrowBackIcon />
@@ -292,35 +247,19 @@ export default function SettlementPage() {
         </Toolbar>
       </AppBar>
 
-      <Box
-        sx={{
-          px: 2,
-          pt: 3,
-          maxWidth: 500,
-          mx: "auto",
-        }}
-      >
+      <Box sx={{ px: 2, pt: 3, maxWidth: 500, mx: "auto" }}>
         {ledgerUnbalanced && (
           <Alert
-            severity={
-              isGraceCorrection
-                ? "info"
-                : "warning"
-            }
+            severity={isGraceCorrection ? "info" : "warning"}
             sx={{ mb: 3 }}
           >
-            <Typography
-              variant="body2"
-              fontWeight={700}
-            >
+            <Typography variant="body2" fontWeight={700}>
               {isGraceCorrection
                 ? "Minor Fractional Correction Applied"
                 : "Table Ledger Unbalanced!"}
             </Typography>
-            Total buy-ins do not equal total
-            cash-outs. The table is off by
+            Total buy-ins do not equal total cash-outs. The table is off by{" "}
             <strong>
-              {" "}
               {discrepancyAmount > 0
                 ? `+$${discrepancyAmount.toFixed(2)}`
                 : `-$${Math.abs(discrepancyAmount).toFixed(2)}`}
@@ -329,60 +268,39 @@ export default function SettlementPage() {
             {isGraceCorrection ? (
               <span>
                 {" "}
-                Loose change balances
-                auto-allocated to ensure
-                settlements generate perfectly.
-                Check brackets below.
+                Loose change balances auto-allocated to ensure settlements
+                generate perfectly. Check brackets below.
               </span>
             ) : (
               <span>
                 {" "}
-                Please review entries before
-                settling debts.Mismatches greater
+                Please review entries before settling debts. Mismatches greater
                 than $1.00 block generation.
               </span>
             )}
           </Alert>
         )}
 
-        {/* View Selection Toggle System */}
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "center",
-            mb: 3,
-          }}
-        >
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 3 }}>
           <ToggleButtonGroup
             value={viewMode}
             exclusive
-            onChange={(_, val) =>
-              val && setViewMode(val)
-            }
+            onChange={(_, val) => val && setViewMode(val)}
             size="small"
             color="primary"
             fullWidth
           >
-            <ToggleButton
-              value="owes"
-              sx={{ fontWeight: 700, gap: 0.5 }}
-            >
-              <CallMadeIcon fontSize="inherit" />{" "}
-              Who Owes Whom
+            <ToggleButton value="owes" sx={{ fontWeight: 700, gap: 0.5 }}>
+              <CallMadeIcon fontSize="inherit" /> Who Owes Whom
             </ToggleButton>
-            <ToggleButton
-              value="receives"
-              sx={{ fontWeight: 700, gap: 0.5 }}
-            >
-              <CallReceivedIcon fontSize="inherit" />{" "}
-              Who Receives What
+            <ToggleButton value="receives" sx={{ fontWeight: 700, gap: 0.5 }}>
+              <CallReceivedIcon fontSize="inherit" /> Who Receives What
             </ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
         {transactions.length === 0 &&
-          (!ledgerUnbalanced ||
-            !isGraceCorrection) && (
+          (!ledgerUnbalanced || !isGraceCorrection) && (
             <Card
               sx={{
                 textAlign: "center",
@@ -395,10 +313,7 @@ export default function SettlementPage() {
                 color="success"
                 sx={{ fontSize: 50, mb: 1 }}
               />
-              <Typography
-                variant="body1"
-                fontWeight={700}
-              >
+              <Typography variant="body1" fontWeight={700}>
                 Everyone is Settled!
               </Typography>
             </Card>
@@ -406,243 +321,143 @@ export default function SettlementPage() {
 
         {/* RENDER VIEW 1: WHO OWES WHOM */}
         {viewMode === "owes" && (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 2.5,
-            }}
-          >
-            {Object.entries(groupedDebts).map(
-              ([debtorName, debts]) => {
-                const totalOwedByThisPerson =
-                  debts.reduce(
-                    (sum, d) => sum + d.amount,
-                    0,
-                  );
-                return (
-                  <Box key={debtorName}>
-                    <Typography
-                      variant="subtitle2"
-                      fontWeight={800}
-                      color="error.main"
-                      sx={{ mb: 1 }}
-                    >
-                      {debtorName} owes a total of
-                      $
-                      {totalOwedByThisPerson.toFixed(
-                        2,
-                      )}
-                      :
-                      {renderCorrectionLabel(
-                        debtorName,
-                      )}
-                    </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+            {Object.entries(groupedDebts).map(([debtorName, debts]) => {
+              const totalOwedByThisPerson = debts.reduce(
+                (sum, d) => sum + d.amount,
+                0,
+              );
+              return (
+                <Box key={debtorName}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={800}
+                    color="error.main"
+                    sx={{ mb: 1 }}
+                  >
+                    {debtorName} owes a total of ${totalOwedByThisPerson.toFixed(2)}:
+                    {renderCorrectionLabel(debtorName)}
+                  </Typography>
 
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        pl: 2,
-                        borderLeft:
-                          "2px solid rgba(239,68,68,0.2)",
-                      }}
-                    >
-                      {debts.map(
-                        (debt, index) => (
-                          <Card
-                            key={index}
-                            variant="outlined"
-                            sx={{
-                              bgcolor:
-                                "background.default",
-                            }}
-                          >
-                            <CardContent
-                              sx={{
-                                py: 1.5,
-                                px: 2,
-                                "&:last-child": {
-                                  pb: 1.5,
-                                },
-                                display: "flex",
-                                alignItems:
-                                  "center",
-                                justifyContent:
-                                  "space-between",
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  alignItems:
-                                    "center",
-                                  gap: 1,
-                                }}
-                              >
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={600}
-                                >
-                                  {debt.from}
-                                </Typography>
-                                <TrendingFlatIcon
-                                  color="action"
-                                  sx={{
-                                    fontSize: 16,
-                                  }}
-                                />
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                >
-                                  pays
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={700}
-                                >
-                                  {debt.to}
-                                </Typography>
-                              </Box>
-                              <Typography
-                                variant="body1"
-                                fontWeight={800}
-                                color="success.main"
-                              >
-                                $
-                                {debt.amount.toFixed(
-                                  2,
-                                )}
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        ),
-                      )}
-                    </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                      pl: 2,
+                      borderLeft: "2px solid rgba(239,68,68,0.2)",
+                    }}
+                  >
+                    {debts.map((debt, index) => (
+                      <Card
+                        key={index}
+                        variant="outlined"
+                        sx={{ bgcolor: "background.default" }}
+                      >
+                        <CardContent
+                          sx={{
+                            py: 1.5,
+                            px: 2,
+                            "&:last-child": { pb: 1.5 },
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Typography variant="body2" fontWeight={600}>
+                              {debt.from}
+                            </Typography>
+                            <TrendingFlatIcon
+                              color="action"
+                              sx={{ fontSize: 16 }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                              pays
+                            </Typography>
+                            <Typography variant="body2" fontWeight={700}>
+                              {debt.to} (Bank)
+                            </Typography>
+                          </Box>
+                          <Typography variant="body1" fontWeight={800} color="success.main">
+                            ${debt.amount.toFixed(2)}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </Box>
-                );
-              },
-            )}
+                </Box>
+              );
+            })}
           </Box>
         )}
 
-        {/* RENDER VIEW 2: WHO RECEIVES WHAT (REVERSE VIEW) */}
+        {/* RENDER VIEW 2: WHO RECEIVES WHAT */}
         {viewMode === "receives" && (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 2.5,
-            }}
-          >
-            {Object.entries(groupedReceipts).map(
-              ([creditorName, receipts]) => {
-                const totalReceivedByThisPerson =
-                  receipts.reduce(
-                    (sum, r) => sum + r.amount,
-                    0,
-                  );
-                return (
-                  <Box key={creditorName}>
-                    <Typography
-                      variant="subtitle2"
-                      fontWeight={800}
-                      color="success.main"
-                      sx={{ mb: 1 }}
-                    >
-                      {creditorName} receives a
-                      total of $
-                      {totalReceivedByThisPerson.toFixed(
-                        2,
-                      )}
-                      :
-                      {renderCorrectionLabel(
-                        creditorName,
-                      )}
-                    </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+            {Object.entries(groupedReceipts).map(([creditorName, receipts]) => {
+              const totalReceivedByThisPerson = receipts.reduce(
+                (sum, r) => sum + r.amount,
+                0,
+              );
+              return (
+                <Box key={creditorName}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={800}
+                    color="success.main"
+                    sx={{ mb: 1 }}
+                  >
+                    {creditorName} receives a total of ${totalReceivedByThisPerson.toFixed(2)}:
+                    {renderCorrectionLabel(creditorName)}
+                  </Typography>
 
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        pl: 2,
-                        borderLeft:
-                          "2px solid rgba(74,222,128,0.3)",
-                      }}
-                    >
-                      {receipts.map(
-                        (receipt, index) => (
-                          <Card
-                            key={index}
-                            variant="outlined"
-                            sx={{
-                              bgcolor:
-                                "background.default",
-                            }}
-                          >
-                            <CardContent
-                              sx={{
-                                py: 1.5,
-                                px: 2,
-                                "&:last-child": {
-                                  pb: 1.5,
-                                },
-                                display: "flex",
-                                alignItems:
-                                  "center",
-                                justifyContent:
-                                  "space-between",
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  alignItems:
-                                    "center",
-                                  gap: 1,
-                                }}
-                              >
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={700}
-                                >
-                                  {receipt.to}
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                >
-                                  gets paid by
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={600}
-                                >
-                                  {receipt.from}
-                                </Typography>
-                              </Box>
-                              <Typography
-                                variant="body1"
-                                fontWeight={800}
-                                color="success.main"
-                              >
-                                $
-                                {receipt.amount.toFixed(
-                                  2,
-                                )}
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        ),
-                      )}
-                    </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                      pl: 2,
+                      borderLeft: "2px solid rgba(74,222,128,0.3)",
+                    }}
+                  >
+                    {receipts.map((receipt, index) => (
+                      <Card
+                        key={index}
+                        variant="outlined"
+                        sx={{ bgcolor: "background.default" }}
+                      >
+                        <CardContent
+                          sx={{
+                            py: 1.5,
+                            px: 2,
+                            "&:last-child": { pb: 1.5 },
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Typography variant="body2" fontWeight={700}>
+                              {receipt.to}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              gets paid by
+                            </Typography>
+                            <Typography variant="body2" fontWeight={600}>
+                              {receipt.from} (Bank)
+                            </Typography>
+                          </Box>
+                          <Typography variant="body1" fontWeight={800} color="success.main">
+                            ${receipt.amount.toFixed(2)}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </Box>
-                );
-              },
-            )}
+                </Box>
+              );
+            })}
           </Box>
         )}
       </Box>

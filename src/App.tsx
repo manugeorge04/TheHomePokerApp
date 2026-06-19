@@ -15,6 +15,7 @@ import StatsPage from './pages/StatsPage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import ProfilePage from './pages/ProfilePage';
 import SettlementPage from './pages/SettlementPage';
+import PlayerStatsPage from './pages/PlayerStatsPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -39,6 +40,7 @@ function AppRoutes() {
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/session/:sessionId/settle" element={<SettlementPage />} />
+        <Route path="/player/:userId" element={<PlayerStatsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
