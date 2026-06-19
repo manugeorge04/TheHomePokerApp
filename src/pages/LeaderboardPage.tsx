@@ -174,7 +174,10 @@ export default function LeaderboardPage() {
                         sx={{
                           mt: 0.5,
                           '& .MuiLinearProgress-bar': {
-                            bgcolor: idx < 3 ? RANK_COLORS[idx] : 'primary.main',
+                            // If it's a negative profit/ROI, turn it red; otherwise use podium or primary colors
+                            bgcolor: tab !== 2 && entry.value < 0 
+                              ? 'error.main' 
+                              : (idx < 3 ? RANK_COLORS[idx] : 'primary.main'),
                           },
                         }}
                       />
