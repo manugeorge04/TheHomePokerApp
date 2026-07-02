@@ -9,7 +9,10 @@ import Avatar from '@mui/material/Avatar';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import LinearProgress from '@mui/material/LinearProgress';
-import Slider from '@mui/material/Slider';
+import IconButton from '@mui/material/IconButton';
+import Popover from '@mui/material/Popover';
+import TextField from '@mui/material/TextField';
+import TuneIcon from '@mui/icons-material/Tune';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -33,7 +36,9 @@ const RANK_COLORS = ['#fbbf24', '#94a3b8', '#cd7f32'];
 export default function LeaderboardPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
-  const [minSessions, setMinSessions] = useState(1);
+  const [minSessions, setMinSessions] = useState(3);
+  const [inputVal, setInputVal] = useState('3');
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [profitBoard, setProfitBoard] = useState<LeaderEntry[]>([]);
   const [roiBoard, setRoiBoard] = useState<LeaderEntry[]>([]);
   const [activeBoard, setActiveBoard] = useState<LeaderEntry[]>([]);
@@ -50,7 +55,6 @@ export default function LeaderboardPage() {
       (p) => ((p.sessions as unknown as { status: string } | null)?.status === 'closed')
     );
 
-    // Aggregate per user
     const map = new Map<string, { display_name: string; net: number; buyin: number; count: number }>();
     for (const p of filtered) {
       const uid = p.user_id as string;
@@ -103,8 +107,8 @@ export default function LeaderboardPage() {
     roiBoard.filter(e => e.sessions >= minSessions),
     activeBoard.filter(e => e.sessions >= minSessions),
   ], [profitBoard, roiBoard, activeBoard, minSessions]);
+
   const currentBoard = boards[tab] ?? [];
-  const maxSessionsInData = Math.max(profitBoard[0]?.sessions ?? 1, roiBoard[0]?.sessions ?? 1, activeBoard[0]?.sessions ?? 1, 1);
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
 
   function formatValue(val: number, tabIdx: number) {
@@ -113,13 +117,66 @@ export default function LeaderboardPage() {
     return `${val} sessions`;
   }
 
+  function handleMinSessionsChange(raw: string) {
+    setInputVal(raw);
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n >= 1) setMinSessions(n);
+  }
+
   return (
     <Box sx={{ px: 2, pt: 3, pb: 2, maxWidth: 600, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
         <LeaderboardIcon sx={{ color: 'secondary.main' }} />
-        <Typography variant="h5" fontWeight={800}>Leaderboards</Typography>
+        <Typography variant="h5" fontWeight={800} sx={{ flex: 1 }}>Leaderboards</Typography>
+        <IconButton
+          size="small"
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+          aria-label="filter settings"
+          sx={{
+            color: minSessions > 1 ? 'primary.main' : 'text.secondary',
+            border: '1px solid',
+            borderColor: minSessions > 1 ? 'primary.main' : 'divider',
+            borderRadius: 1.5,
+            p: 0.75,
+          }}
+        >
+          <TuneIcon fontSize="small" />
+        </IconButton>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>All-time rankings</Typography>
+
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{
+          paper: {
+            sx: {
+              p: 2,
+              minWidth: 220,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+            },
+          },
+        }}
+      >
+        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+          Filter Options
+        </Typography>
+        <TextField
+          label="Min. sessions"
+          type="number"
+          size="small"
+          fullWidth
+          value={inputVal}
+          onChange={(e) => handleMinSessionsChange(e.target.value)}
+          slotProps={{ htmlInput: { min: 1 } }}
+          helperText="Hide players with fewer sessions"
+        />
+      </Popover>
 
       <Tabs
         value={tab}
@@ -134,29 +191,9 @@ export default function LeaderboardPage() {
         <Tab label="Active" />
       </Tabs>
 
-      <Box sx={{ mb: 2, px: 1 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">Min. sessions filter</Typography>
-          <Typography variant="caption" fontWeight={700} color="primary.main">{minSessions}+</Typography>
-        </Box>
-        <Slider
-          value={minSessions}
-          onChange={(_, v) => setMinSessions(v as number)}
-          min={1}
-          max={Math.max(maxSessionsInData, 10)}
-          step={1}
-          marks
-          valueLabelDisplay="auto"
-          sx={{
-            '& .MuiSlider-thumb': { height: 16, width: 16 },
-            '& .MuiSlider-mark': { height: 4, width: 4, borderRadius: '50%' },
-          }}
-        />
-      </Box>
-
-      {tab === 1 && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-          Min. 3 sessions required for ROI calculation
+      {minSessions > 1 && (
+        <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1.5 }}>
+          Showing players with {minSessions}+ sessions
         </Typography>
       )}
 
@@ -166,7 +203,9 @@ export default function LeaderboardPage() {
         <Card sx={{ textAlign: 'center', py: 6 }}>
           <CardContent>
             <EmojiEventsIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography color="text.secondary">No data yet. Play some sessions!</Typography>
+            <Typography color="text.secondary">
+              {minSessions > 1 ? `No players with ${minSessions}+ sessions yet.` : 'No data yet. Play some sessions!'}
+            </Typography>
           </CardContent>
         </Card>
       ) : (
@@ -201,9 +240,8 @@ export default function LeaderboardPage() {
                         sx={{
                           mt: 0.5,
                           '& .MuiLinearProgress-bar': {
-                            // If it's a negative profit/ROI, turn it red; otherwise use podium or primary colors
-                            bgcolor: tab !== 2 && entry.value < 0 
-                              ? 'error.main' 
+                            bgcolor: tab !== 2 && entry.value < 0
+                              ? 'error.main'
                               : (idx < 3 ? RANK_COLORS[idx] : 'primary.main'),
                           },
                         }}
