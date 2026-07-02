@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -9,6 +9,7 @@ import Avatar from '@mui/material/Avatar';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import LinearProgress from '@mui/material/LinearProgress';
+import Slider from '@mui/material/Slider';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -32,6 +33,7 @@ const RANK_COLORS = ['#fbbf24', '#94a3b8', '#cd7f32'];
 export default function LeaderboardPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
+  const [minSessions, setMinSessions] = useState(1);
   const [profitBoard, setProfitBoard] = useState<LeaderEntry[]>([]);
   const [roiBoard, setRoiBoard] = useState<LeaderEntry[]>([]);
   const [activeBoard, setActiveBoard] = useState<LeaderEntry[]>([]);
@@ -96,8 +98,13 @@ export default function LeaderboardPage() {
 
   useEffect(() => { loadLeaderboards(); }, [loadLeaderboards]);
 
-  const boards = [profitBoard, roiBoard, activeBoard];
+  const boards = useMemo(() => [
+    profitBoard.filter(e => e.sessions >= minSessions),
+    roiBoard.filter(e => e.sessions >= minSessions),
+    activeBoard.filter(e => e.sessions >= minSessions),
+  ], [profitBoard, roiBoard, activeBoard, minSessions]);
   const currentBoard = boards[tab] ?? [];
+  const maxSessionsInData = Math.max(profitBoard[0]?.sessions ?? 1, roiBoard[0]?.sessions ?? 1, activeBoard[0]?.sessions ?? 1, 1);
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
 
   function formatValue(val: number, tabIdx: number) {
@@ -117,7 +124,7 @@ export default function LeaderboardPage() {
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v as number)}
-        sx={{ mb: 3 }}
+        sx={{ mb: 2 }}
         textColor="primary"
         indicatorColor="primary"
         variant="fullWidth"
@@ -127,9 +134,29 @@ export default function LeaderboardPage() {
         <Tab label="Active" />
       </Tabs>
 
+      <Box sx={{ mb: 2, px: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">Min. sessions filter</Typography>
+          <Typography variant="caption" fontWeight={700} color="primary.main">{minSessions}+</Typography>
+        </Box>
+        <Slider
+          value={minSessions}
+          onChange={(_, v) => setMinSessions(v as number)}
+          min={1}
+          max={Math.max(maxSessionsInData, 10)}
+          step={1}
+          marks
+          valueLabelDisplay="auto"
+          sx={{
+            '& .MuiSlider-thumb': { height: 16, width: 16 },
+            '& .MuiSlider-mark': { height: 4, width: 4, borderRadius: '50%' },
+          }}
+        />
+      </Box>
+
       {tab === 1 && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-          Min. 3 sessions required
+          Min. 3 sessions required for ROI calculation
         </Typography>
       )}
 
