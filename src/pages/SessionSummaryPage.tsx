@@ -48,6 +48,7 @@ export default function SessionSummaryPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<SessionPlayer[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [isCohost, setIsCohost] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,6 +67,10 @@ export default function SessionSummaryPage() {
       .eq('session_id', sessionId)
       .order('result', { ascending: false });
     setPlayers((playerRows ?? []) as SessionPlayer[]);
+
+    // Check if current user is a cohost
+    const currentUserPlayer = (playerRows ?? []).find((p) => p.user_id === user?.id);
+    setIsCohost(currentUserPlayer?.is_cohost === true);
 
     const { data: approvalRow } = await supabase
       .from('approvals')
@@ -281,8 +286,8 @@ export default function SessionSummaryPage() {
           </Alert>
         )}
 
-        {/* Host Actions */}
-        {isHost && !approved && (
+        {/* Host/Cohost Actions */}
+        {(isHost || isCohost) && !approved && (
           <Button
             variant="contained"
             color={hasDiff ? 'warning' : 'primary'}
@@ -295,7 +300,7 @@ export default function SessionSummaryPage() {
           </Button>
         )}
 
-        {!isHost && !approved && (
+        {!isHost && !isCohost && !approved && (
           <Box sx={{ display: 'flex', gap: 1.5, mb: 1.5 }}>
             <Button
               variant="outlined"
