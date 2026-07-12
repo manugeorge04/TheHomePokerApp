@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -19,6 +19,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import Alert from '@mui/material/Alert';
+import Snackbar from '@mui/material/Snackbar';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import type { Session } from '../types';
@@ -45,6 +46,7 @@ interface RecentSession extends Session {
 export default function DashboardPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [myStats, setMyStats] = useState({ net: 0, sessions: 0, winRate: 0 });
@@ -56,6 +58,7 @@ export default function DashboardPage() {
   const [joinName, setJoinName] = useState('');
   const [joinBuyin, setJoinBuyin] = useState(String(profile?.preferred_buyin ?? 20));
   const [error, setError] = useState('');
+  const [deepLinkError, setDeepLinkError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -66,6 +69,64 @@ export default function DashboardPage() {
     loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profile]);
+
+  // Deep-link auto-join: ?join=CODE shared from a session
+  useEffect(() => {
+    if (!user) return;
+    const joinCodeFromUrl = searchParams.get('join');
+    if (!joinCodeFromUrl) return;
+
+    (async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const code = joinCodeFromUrl.toUpperCase().trim();
+        const { data: session, error: err } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('join_code', code)
+          .single();
+
+        if (err || !session) {
+          setDeepLinkError('Session not found. The link may be invalid.');
+          searchParams.delete('join');
+          setSearchParams(searchParams, { replace: true });
+          return;
+        }
+
+        if (session.status === 'closed') {
+          setDeepLinkError(`"${session.title}" has ended and can no longer be joined.`);
+          searchParams.delete('join');
+          setSearchParams(searchParams, { replace: true });
+          return;
+        }
+
+        // Check if already joined
+        const { data: existing } = await supabase
+          .from('session_players')
+          .select('id')
+          .eq('session_id', session.id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (existing) {
+          navigate(`/session/${session.id}`);
+          return;
+        }
+
+        // Pre-fill join dialog with the code and open it
+        setJoinCode(code);
+        setJoinOpen(true);
+      } catch {
+        setDeepLinkError('Something went wrong joining the session.');
+      } finally {
+        setLoading(false);
+        searchParams.delete('join');
+        setSearchParams(searchParams, { replace: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, searchParams]);
 
   async function loadDashboard() {
     if (!user) return;
@@ -436,6 +497,16 @@ export default function DashboardPage() {
           50% { opacity: 0.4; }
         }
       `}</style>
+      <Snackbar
+        open={!!deepLinkError}
+        autoHideDuration={6000}
+        onClose={() => setDeepLinkError('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="info" onClose={() => setDeepLinkError('')} sx={{ width: '100%' }}>
+          {deepLinkError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -19,6 +19,7 @@ import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ShareIcon from '@mui/icons-material/Share';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import StopIcon from '@mui/icons-material/Stop';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -142,6 +143,26 @@ export default function SessionLobbyPage() {
       navigate('/');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleShare() {
+    if (!session) return;
+    const shareUrl = `${window.location.origin}/?join=${session.join_code}`;
+    const shareData = {
+      title: session.title || 'Poker Session',
+      text: `Join my poker session "${session.title}"! Tap the link to jump in.`,
+      url: shareUrl,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopySnack(true);
+      }
+    } catch {
+      // user cancelled share — no action needed
     }
   }
 
@@ -316,15 +337,23 @@ export default function SessionLobbyPage() {
                   {session.join_code}
                 </Typography>
               </Box>
-              <IconButton
-                onClick={() => {
-                  navigator.clipboard.writeText(session.join_code);
-                  setCopySnack(true);
-                }}
-                sx={{ color: 'secondary.main' }}
-              >
-                <ContentCopyIcon />
-              </IconButton>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <IconButton
+                  onClick={() => {
+                    navigator.clipboard.writeText(session.join_code);
+                    setCopySnack(true);
+                  }}
+                  sx={{ color: 'secondary.main' }}
+                >
+                  <ContentCopyIcon />
+                </IconButton>
+                <IconButton
+                  onClick={handleShare}
+                  sx={{ color: 'secondary.main' }}
+                >
+                  <ShareIcon />
+                </IconButton>
+              </Box>
             </Box>
           </CardContent>
         </Card>
@@ -543,7 +572,7 @@ export default function SessionLobbyPage() {
         open={copySnack}
         autoHideDuration={2000}
         onClose={() => setCopySnack(false)}
-        message="Join code copied!"
+        message="Copied to clipboard!"
       />
     </Box>
   );
