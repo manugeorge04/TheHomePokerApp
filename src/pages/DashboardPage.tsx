@@ -6,6 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import CardActionArea from '@mui/material/CardActionArea';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -15,13 +16,16 @@ import Avatar from '@mui/material/Avatar';
 import AddIcon from '@mui/icons-material/Add';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import CasinoIcon from '@mui/icons-material/Casino';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
+import InputAdornment from '@mui/material/InputAdornment';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
+import { randomSessionName } from '../lib/sessionNames';
 import type { Session } from '../types';
 
 function formatMoney(val: number) {
@@ -52,7 +56,7 @@ export default function DashboardPage() {
   const [myStats, setMyStats] = useState({ net: 0, sessions: 0, winRate: 0 });
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
-  const [sessionTitle, setSessionTitle] = useState('Poker Night');
+  const [sessionTitle, setSessionTitle] = useState(() => randomSessionName());
   const [createBuyin, setCreateBuyin] = useState(String(profile?.preferred_buyin ?? 20));
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -196,7 +200,7 @@ export default function DashboardPage() {
 
       const { data: session, error: err } = await supabase
         .from('sessions')
-        .insert({ join_code: code, host_id: user.id, title: sessionTitle || 'Poker Night' })
+        .insert({ join_code: code, host_id: user.id, title: sessionTitle.trim() || randomSessionName() })
         .select()
         .single();
       if (err) throw err;
@@ -436,6 +440,21 @@ export default function DashboardPage() {
               value={sessionTitle}
               onChange={(e) => setSessionTitle(e.target.value)}
               fullWidth
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setSessionTitle(randomSessionName())}
+                        edge="end"
+                        aria-label="Shuffle name"
+                      >
+                        <ShuffleIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
             />
             <TextField
               label="Your Buy-In Amount ($)"
