@@ -13,6 +13,8 @@ import Toolbar from '@mui/material/Toolbar';
 import IconButton from '@mui/material/IconButton';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
@@ -35,6 +37,7 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
 type Timeframe = '1M' | '6M' | '1Y' | 'ALL';
+type ChartGrouping = 'session' | 'weekly' | 'monthly';
 
 interface SessionData {
   result: number;
@@ -50,6 +53,12 @@ interface ChartPoint {
   sessionPnl: number;
   cumulative: number;
 }
+
+const GROUPING_LABELS: Record<ChartGrouping, string> = {
+  session: 'By Session',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+};
 
 interface Stats {
   totalSessions: number;
@@ -149,6 +158,55 @@ function buildChartData(sessions: SessionData[]): ChartPoint[] {
       label: formatShortDate(s.date),
       fullDate: formatFullDate(s.date),
       sessionPnl: s.result,
+      cumulative: Math.round(running * 100) / 100,
+    };
+  });
+}
+
+function getWeekKey(iso: string): string {
+  const d = new Date(iso);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function getMonthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping): ChartPoint[] {
+  if (grouping === 'session') return buildChartData(sessions);
+
+  const buckets = new Map<string, { total: number; firstDate: string; lastDate: string }>();
+
+  for (const s of sessions) {
+    const key = grouping === 'weekly' ? getWeekKey(s.date) : getMonthKey(s.date);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.total += s.result;
+      existing.lastDate = s.date;
+    } else {
+      buckets.set(key, { total: s.result, firstDate: s.date, lastDate: s.date });
+    }
+  }
+
+  const sortedKeys = Array.from(buckets.keys()).sort();
+  let running = 0;
+  return sortedKeys.map((key) => {
+    const b = buckets.get(key)!;
+    running += b.total;
+    const label = grouping === 'weekly'
+      ? `Wk ${formatShortDate(b.firstDate)}`
+      : new Date(key + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const fullDate = grouping === 'weekly'
+      ? `${formatFullDate(b.firstDate)} – ${formatFullDate(b.lastDate)}`
+      : new Date(key + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return {
+      label,
+      fullDate,
+      sessionPnl: Math.round(b.total * 100) / 100,
       cumulative: Math.round(running * 100) / 100,
     };
   });
@@ -287,6 +345,7 @@ export default function PlayerStatsPage() {
   const [allSessions, setAllSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>('ALL');
+  const [chartGrouping, setChartGrouping] = useState<ChartGrouping>('session');
   const isOwnProfile = userId === user?.id;
 
   const loadStats = useCallback(async () => {
@@ -338,7 +397,7 @@ export default function PlayerStatsPage() {
 
   const filtered = useMemo(() => filterByTimeframe(allSessions, timeframe), [allSessions, timeframe]);
   const stats = useMemo(() => computeStats(filtered), [filtered]);
-  const chartData = useMemo(() => buildChartData(filtered), [filtered]);
+  const chartData = useMemo(() => buildGroupedChartData(filtered, chartGrouping), [filtered, chartGrouping]);
 
   const noData = filtered.length === 0;
   const initials = displayName ? displayName[0].toUpperCase() : '?';
@@ -547,14 +606,27 @@ export default function PlayerStatsPage() {
               }}
             >
               <CardContent sx={{ pb: '12px !important' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <ShowChartIcon
-                    sx={{ color: stats.netProfit >= 0 ? 'success.main' : 'error.main', fontSize: 20 }}
-                  />
-                  <Typography variant="subtitle2" fontWeight={700}>Combined Profit Timeline</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ShowChartIcon
+                      sx={{ color: stats.netProfit >= 0 ? 'success.main' : 'error.main', fontSize: 20 }}
+                    />
+                    <Typography variant="subtitle2" fontWeight={700}>Combined Profit Timeline</Typography>
+                  </Box>
+                  <TextField
+                    select
+                    size="small"
+                    value={chartGrouping}
+                    onChange={(e) => setChartGrouping(e.target.value as ChartGrouping)}
+                    sx={{ minWidth: 130, '& .MuiOutlinedInput-root': { fontSize: '0.75rem', py: 0.5 } }}
+                  >
+                    {Object.entries(GROUPING_LABELS).map(([key, label]) => (
+                      <MenuItem key={key} value={key} sx={{ fontSize: '0.8rem' }}>{label}</MenuItem>
+                    ))}
+                  </TextField>
                 </Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                  Running bankroll (area) · Session P&L (bars)
+                  Running bankroll (area) · {chartGrouping === 'session' ? 'Session' : chartGrouping === 'weekly' ? 'Weekly' : 'Monthly'} P&L (bars)
                 </Typography>
                 {chartData.length < 2 ? (
                   <Box sx={{ textAlign: 'center', py: 4 }}>
