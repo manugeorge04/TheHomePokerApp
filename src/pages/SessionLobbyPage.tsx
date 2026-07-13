@@ -27,6 +27,7 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import LogoutIcon from '@mui/icons-material/Logout';
 import ShieldIcon from '@mui/icons-material/Shield';
 import AddModeratorIcon from '@mui/icons-material/AddModerator';
 import RemoveModeratorIcon from '@mui/icons-material/RemoveModerator';
@@ -60,6 +61,7 @@ export default function SessionLobbyPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [kickConfirmOpen, setKickConfirmOpen] = useState(false);
   const [playerToKick, setPlayerToKick] = useState<PlayerWithBuyins | null>(null);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -249,6 +251,18 @@ export default function SessionLobbyPage() {
       await supabase.from('session_players').delete().eq('id', playerToKick.id);
       setKickConfirmOpen(false);
       setPlayerToKick(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLeaveSession() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await supabase.from('session_players').delete().eq('session_id', sessionId).eq('user_id', user.id);
+      setLeaveConfirmOpen(false);
+      navigate('/');
     } finally {
       setLoading(false);
     }
@@ -461,6 +475,20 @@ export default function SessionLobbyPage() {
             Enter Cash-Out
           </Button>
         )}
+
+        {/* Leave Session Button — non-host players only */}
+        {players.some((p) => p.user_id === user?.id) && session.host_id !== user?.id && (
+          <Button
+            variant="outlined"
+            color="error"
+            fullWidth
+            startIcon={<LogoutIcon />}
+            onClick={() => setLeaveConfirmOpen(true)}
+            sx={{ mt: 1 }}
+          >
+            Leave Session
+          </Button>
+        )}
       </Box>
 
       {/* Rebuy Dialog */}
@@ -565,6 +593,20 @@ export default function SessionLobbyPage() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setKickConfirmOpen(false)} color="inherit">Cancel</Button>
           <Button variant="contained" color="error" onClick={handleKickPlayer} disabled={loading}>Remove</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Leave Session Confirm */}
+      <Dialog open={leaveConfirmOpen} onClose={() => setLeaveConfirmOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle fontWeight={700}>Leave Session?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to leave this session? Your buy-in records will be deleted and you'll be taken back to the dashboard.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setLeaveConfirmOpen(false)} color="inherit">Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleLeaveSession} disabled={loading}>Leave</Button>
         </DialogActions>
       </Dialog>
 
