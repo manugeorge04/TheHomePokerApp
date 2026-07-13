@@ -88,6 +88,7 @@ function formatMoney(val: number) {
   return val >= 0 ? `+${str}` : `-${str}`;
 }
 
+// Fixed global utilities to evaluate timestamps local to PST/your browser
 function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
@@ -163,17 +164,25 @@ function buildChartData(sessions: SessionData[]): ChartPoint[] {
   });
 }
 
+// Fixed grouping keys to evaluate date parts in local time zone context
 function getWeekKey(iso: string): string {
   const d = new Date(iso);
   d.setHours(0, 0, 0, 0);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().slice(0, 10);
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
 }
 
 function getMonthKey(iso: string): string {
-  return iso.slice(0, 7);
+  const d = new Date(iso);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
 }
 
 function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping): ChartPoint[] {
@@ -195,11 +204,13 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
   const sortedKeys = Array.from(buckets.keys()).sort();
   let running = 0;
   const monthWeekCount = new Map<string, number>();
+  
   return sortedKeys.map((key) => {
     const b = buckets.get(key)!;
     running += b.total;
     let label: string;
     let fullDate: string;
+    
     if (grouping === 'weekly') {
       const weekStart = new Date(key + 'T00:00:00');
       const monthName = weekStart.toLocaleDateString('en-US', { month: 'short' });
@@ -209,10 +220,12 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
       label = `${monthName}(${count})`;
       fullDate = `${formatFullDate(b.firstDate)} – ${formatFullDate(b.lastDate)}`;
     } else {
-      const monthDate = new Date(key + '-01');
+      // Re-instantiate using string local midnight indicator to lock it into local month
+      const monthDate = new Date(key + '-01T00:00:00');
       label = monthDate.toLocaleDateString('en-US', { month: 'short' });
       fullDate = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
+    
     return {
       label,
       fullDate,
