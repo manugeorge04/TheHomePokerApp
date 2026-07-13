@@ -133,6 +133,12 @@ function computeStats(sessions: SessionData[]): Stats {
   if (last > 0) currentStreak = winStreak;
   else if (last < 0) currentStreak = -lossStreak;
 
+  console.log({
+  rawSessions: allSessions.map(s => ({ date: s.date, result: s.result })),
+  filteredSessions: filtered.map(s => ({ date: s.date, result: s.result })),
+  generatedChartData: chartData
+});
+
   return {
     totalSessions: sessions.length,
     totalBuyins,
