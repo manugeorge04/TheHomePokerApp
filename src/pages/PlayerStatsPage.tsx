@@ -169,11 +169,18 @@ function getWeekKey(iso: string): string {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().slice(0, 10);
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
 }
 
 function getMonthKey(iso: string): string {
-  return iso.slice(0, 7);
+  const d = new Date(iso);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
 }
 
 function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping): ChartPoint[] {
@@ -195,11 +202,13 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
   const sortedKeys = Array.from(buckets.keys()).sort();
   let running = 0;
   const monthWeekCount = new Map<string, number>();
+  
   return sortedKeys.map((key) => {
     const b = buckets.get(key)!;
     running += b.total;
     let label: string;
     let fullDate: string;
+    
     if (grouping === 'weekly') {
       const weekStart = new Date(key + 'T00:00:00');
       const monthName = weekStart.toLocaleDateString('en-US', { month: 'short' });
@@ -209,10 +218,12 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
       label = `${monthName}(${count})`;
       fullDate = `${formatFullDate(b.firstDate)} – ${formatFullDate(b.lastDate)}`;
     } else {
-      const monthDate = new Date(key + '-01');
-      label = monthDate.toLocaleDateString('en-US', { month: 'short' });
-      fullDate = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      // Instead of parsing key + '-01', use the actual local session date present in the bucket
+      const referenceDate = new Date(b.firstDate);
+      label = referenceDate.toLocaleDateString('en-US', { month: 'short' });
+      fullDate = referenceDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
+    
     return {
       label,
       fullDate,
@@ -408,6 +419,13 @@ export default function PlayerStatsPage() {
   const filtered = useMemo(() => filterByTimeframe(allSessions, timeframe), [allSessions, timeframe]);
   const stats = useMemo(() => computeStats(filtered), [filtered]);
   const chartData = useMemo(() => buildGroupedChartData(filtered, chartGrouping), [filtered, chartGrouping]);
+
+  // Safely scoped console log inside the component hook
+  console.log({
+    rawSessions: allSessions.map(s => ({ date: s.date, result: s.result })),
+    filteredSessions: filtered.map(s => ({ date: s.date, result: s.result })),
+    generatedChartData: chartData
+  });
 
   const noData = filtered.length === 0;
   const initials = displayName ? displayName[0].toUpperCase() : '?';
