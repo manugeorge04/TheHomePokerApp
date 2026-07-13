@@ -163,17 +163,24 @@ function buildChartData(sessions: SessionData[]): ChartPoint[] {
   });
 }
 
+function getMonthKey(iso: string): string {
+  const d = new Date(iso);
+  const year = d.getFullYear(); // Local year (2026)
+  const month = String(d.getMonth() + 1).padStart(2, '0'); // Local month (06)
+  return `${year}-${month}`;
+}
+
 function getWeekKey(iso: string): string {
   const d = new Date(iso);
-  d.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0); // Sets to local midnight
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().slice(0, 10);
-}
-
-function getMonthKey(iso: string): string {
-  return iso.slice(0, 7);
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
 }
 
 function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping): ChartPoint[] {
@@ -201,6 +208,7 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
     let label: string;
     let fullDate: string;
     if (grouping === 'weekly') {
+      // Append local time format here as well
       const weekStart = new Date(key + 'T00:00:00');
       const monthName = weekStart.toLocaleDateString('en-US', { month: 'short' });
       const monthKey = weekStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -208,8 +216,8 @@ function buildGroupedChartData(sessions: SessionData[], grouping: ChartGrouping)
       monthWeekCount.set(monthKey, count);
       label = `${monthName}(${count})`;
       fullDate = `${formatFullDate(b.firstDate)} – ${formatFullDate(b.lastDate)}`;
-    } else {
-      const monthDate = new Date(key + '-01');
+    }else {
+      const monthDate = new Date(key + '-01T00:00:00');
       label = monthDate.toLocaleDateString('en-US', { month: 'short' });
       fullDate = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
