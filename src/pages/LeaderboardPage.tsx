@@ -12,17 +12,20 @@ import LinearProgress from '@mui/material/LinearProgress';
 import IconButton from '@mui/material/IconButton';
 import Popover from '@mui/material/Popover';
 import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 import TuneIcon from '@mui/icons-material/Tune';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { supabase } from '../lib/supabase';
 
-interface LeaderEntry {
+interface RawPlayer {
   user_id: string;
   display_name: string;
-  value: number;
-  sessions: number;
+  result: number;
+  total_buyin: number;
+  session_status: string;
+  session_date: string;
 }
 
 function formatMoney(val: number) {
@@ -33,37 +36,79 @@ function formatMoney(val: number) {
 
 const RANK_COLORS = ['#fbbf24', '#94a3b8', '#cd7f32'];
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function monthKey(dateStr: string) {
+  return dateStr.slice(0, 7);
+}
+
+function formatMonthLabel(key: string) {
+  const [y, m] = key.split('-');
+  return `${MONTHS[parseInt(m, 10) - 1]} ${y}`;
+}
+
 export default function LeaderboardPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [minSessions, setMinSessions] = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
-  const [profitBoard, setProfitBoard] = useState<LeaderEntry[]>([]);
-  const [roiBoard, setRoiBoard] = useState<LeaderEntry[]>([]);
-  const [activeBoard, setActiveBoard] = useState<LeaderEntry[]>([]);
+  const [rawPlayers, setRawPlayers] = useState<RawPlayer[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
   const loadLeaderboards = useCallback(async () => {
     const { data: players } = await supabase
       .from('session_players')
-      .select('user_id, display_name, result, total_buyin, sessions(status)')
+      .select(`
+        user_id, display_name, result, total_buyin,
+        sessions!inner(status, started_at)
+      `)
       .not('user_id', 'is', null)
       .not('result', 'is', null);
 
     const filtered = (players ?? []).filter(
-      (p) => ((p.sessions as unknown as { status: string } | null)?.status === 'closed')
+      (p) => ((p.sessions as unknown as { status: string; started_at: string } | null)?.status === 'closed')
     );
+
+    const mapped: RawPlayer[] = filtered.map((p) => ({
+      user_id: p.user_id as string,
+      display_name: (p.display_name as string | null) ?? 'Unknown',
+      result: Number(p.result),
+      total_buyin: Number(p.total_buyin),
+      session_status: (p.sessions as unknown as { status: string })?.status ?? '',
+      session_date: (p.sessions as unknown as { started_at: string })?.started_at ?? '',
+    }));
+
+    setRawPlayers(mapped);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadLeaderboards(); }, [loadLeaderboards]);
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of rawPlayers) {
+      if (p.session_date) set.add(monthKey(p.session_date));
+    }
+    return Array.from(set).sort().reverse();
+  }, [rawPlayers]);
+
+  const boards = useMemo(() => {
+    const filtered = selectedMonth === 'all'
+      ? rawPlayers
+      : rawPlayers.filter((p) => monthKey(p.session_date) === selectedMonth);
 
     const map = new Map<string, { display_name: string; net: number; buyin: number; count: number }>();
     for (const p of filtered) {
-      const uid = p.user_id as string;
-      const name = (p.display_name as string | null) ?? 'Unknown';
-      const existing = map.get(uid) ?? { display_name: name, net: 0, buyin: 0, count: 0 };
-      existing.net += Number(p.result);
-      existing.buyin += Number(p.total_buyin);
+      const existing = map.get(p.user_id) ?? { display_name: p.display_name, net: 0, buyin: 0, count: 0 };
+      existing.net += p.result;
+      existing.buyin += p.total_buyin;
       existing.count += 1;
-      map.set(uid, existing);
+      map.set(p.user_id, existing);
     }
 
     const entries = Array.from(map.entries()).map(([uid, d]) => ({
@@ -75,38 +120,25 @@ export default function LeaderboardPage() {
       count: d.count,
     }));
 
-    setProfitBoard(
-      [...entries]
-        .sort((a, b) => b.net - a.net)
-        .slice(0, 20)
-        .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.net, sessions: e.sessions }))
-    );
+    const profit = [...entries]
+      .sort((a, b) => b.net - a.net)
+      .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.net, sessions: e.sessions }));
 
-    setRoiBoard(
-      [...entries]
-        .filter((e) => e.sessions >= 3)
-        .sort((a, b) => b.roi - a.roi)
-        .slice(0, 20)
-        .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.roi, sessions: e.sessions }))
-    );
+    const roi = [...entries]
+      .filter((e) => e.sessions >= 3)
+      .sort((a, b) => b.roi - a.roi)
+      .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.roi, sessions: e.sessions }));
 
-    setActiveBoard(
-      [...entries]
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 20)
-        .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.count, sessions: e.sessions }))
-    );
+    const active = [...entries]
+      .sort((a, b) => b.count - a.count)
+      .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.count, sessions: e.sessions }));
 
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadLeaderboards(); }, [loadLeaderboards]);
-
-  const boards = useMemo(() => [
-    profitBoard.filter(e => e.sessions >= minSessions),
-    roiBoard.filter(e => e.sessions >= minSessions),
-    activeBoard.filter(e => e.sessions >= minSessions),
-  ], [profitBoard, roiBoard, activeBoard, minSessions]);
+    return [
+      profit.filter((e) => e.sessions >= minSessions),
+      roi.filter((e) => e.sessions >= minSessions),
+      active.filter((e) => e.sessions >= minSessions),
+    ];
+  }, [rawPlayers, selectedMonth, minSessions]);
 
   const currentBoard = boards[tab] ?? [];
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
@@ -133,9 +165,9 @@ export default function LeaderboardPage() {
           onClick={(e) => setAnchorEl(e.currentTarget)}
           aria-label="filter settings"
           sx={{
-            color: minSessions > 1 ? 'primary.main' : 'text.secondary',
+            color: minSessions > 1 || selectedMonth !== 'all' ? 'primary.main' : 'text.secondary',
             border: '1px solid',
-            borderColor: minSessions > 1 ? 'primary.main' : 'divider',
+            borderColor: minSessions > 1 || selectedMonth !== 'all' ? 'primary.main' : 'divider',
             borderRadius: 1.5,
             p: 0.75,
           }}
@@ -143,7 +175,24 @@ export default function LeaderboardPage() {
           <TuneIcon fontSize="small" />
         </IconButton>
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>All-time rankings</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {selectedMonth === 'all' ? 'All-time rankings' : `${formatMonthLabel(selectedMonth)} rankings`}
+      </Typography>
+
+      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+        <TextField
+          select
+          size="small"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          sx={{ flex: 1, '& .MuiOutlinedInput-root': { fontSize: '0.85rem' } }}
+        >
+          <MenuItem value="all" sx={{ fontSize: '0.85rem' }}>All Time</MenuItem>
+          {availableMonths.map((m) => (
+            <MenuItem key={m} value={m} sx={{ fontSize: '0.85rem' }}>{formatMonthLabel(m)}</MenuItem>
+          ))}
+        </TextField>
+      </Box>
 
       <Popover
         open={Boolean(anchorEl)}
