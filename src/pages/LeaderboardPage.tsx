@@ -56,8 +56,8 @@ function formatMonthLabel(key: string) {
 export default function LeaderboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const isAdmin = profile?.display_name?.toLowerCase() === 'mastermanuver' || profile?.display_name?.toLowerCase() === 'masstermanuver';
-  const [tab, setTab] = useState(0); // 0 = Active, 1 = Profit, 2 = ROI
+  const isAdmin = profile?.display_name === 'Master Manuver';
+  const [tab, setTab] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => monthKey(new Date().toISOString()));
   const [minSessionsOverride, setMinSessionsOverride] = useState<number | null>(null);
   const [inputVal, setInputVal] = useState('');
@@ -70,60 +70,57 @@ export default function LeaderboardPage() {
   const isMonthly = selectedMonth !== 'all';
   const minSessions = minSessionsOverride ?? (isMonthly ? 1 : 3);
 
-  useEffect(() => {
-    let active = true;
+useEffect(() => {
+  let active = true;
 
-    async function fetchSetting() {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'leaderboard_show_all')
-        .maybeSingle();
+  // 1. Initial fetch of current setting
+  async function fetchSetting() {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'leaderboard_show_all')
+      .maybeSingle();
 
-      if (active && data) {
-        setShowAll(Boolean(data.value));
-        setShowAllLoading(false);
-      }
+    if (active && data) {
+      setShowAll(Boolean(data.value));
+      setShowAllLoading(false);
     }
+  }
 
-    fetchSetting();
+  fetchSetting();
 
-    const channel = supabase
-      .channel('app_settings_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'app_settings',
-          filter: 'key=eq.leaderboard_show_all',
-        },
-        (payload) => {
-          if (payload.new && typeof payload.new.value === 'boolean') {
-            setShowAll(payload.new.value);
-          }
+  // 2. Subscribe to realtime updates on app_settings table
+  const channel = supabase
+    .channel('app_settings_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'app_settings',
+        filter: 'key=eq.leaderboard_show_all',
+      },
+      (payload) => {
+        if (payload.new && typeof payload.new.value === 'boolean') {
+          setShowAll(payload.new.value);
         }
-      )
-      .subscribe();
+      }
+    )
+    .subscribe();
 
-    return () => {
-      active = false;
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  // 3. Clean up subscription on unmount
+  return () => {
+    active = false;
+    supabase.removeChannel(channel);
+  };
+}, []);
 
   async function toggleShowAll(next: boolean) {
-    const prev = showAll;
     setShowAll(next);
-
-    const { error } = await supabase
+    await supabase
       .from('app_settings')
       .update({ value: next, updated_at: new Date().toISOString(), updated_by: profile?.id ?? null })
       .eq('key', 'leaderboard_show_all');
-
-    if (error) {
-      setShowAll(prev);
-    }
   }
 
   const loadLeaderboards = useCallback(async () => {
@@ -186,10 +183,6 @@ export default function LeaderboardPage() {
       count: d.count,
     }));
 
-    const active = [...entries]
-      .sort((a, b) => b.count - a.count)
-      .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.count, sessions: e.sessions }));
-
     const profit = [...entries]
       .filter((e) => isMonthly || showAll || e.net > 0)
       .sort((a, b) => b.net - a.net)
@@ -200,20 +193,24 @@ export default function LeaderboardPage() {
       .sort((a, b) => b.roi - a.roi)
       .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.roi, sessions: e.sessions }));
 
+    const active = [...entries]
+      .sort((a, b) => b.count - a.count)
+      .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.count, sessions: e.sessions }));
+
     return [
-      active.filter((e) => e.sessions >= minSessions),
       profit.filter((e) => e.sessions >= minSessions),
       roi.filter((e) => e.sessions >= minSessions),
+      active.filter((e) => e.sessions >= minSessions),
     ];
-  }, [rawPlayers, selectedMonth, minSessions, showAll, isMonthly]);
+  }, [rawPlayers, selectedMonth, minSessions, showAll]);
 
   const currentBoard = boards[tab] ?? [];
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
 
   function formatValue(val: number, tabIdx: number) {
-    if (tabIdx === 0) return `${val} sessions`;
-    if (tabIdx === 1) return formatMoney(val);
-    return `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+    if (tabIdx === 0) return formatMoney(val);
+    if (tabIdx === 1) return `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+    return `${val} sessions`;
   }
 
   function handleMinSessionsChange(raw: string) {
@@ -322,9 +319,9 @@ export default function LeaderboardPage() {
         indicatorColor="primary"
         variant="fullWidth"
       >
-        <Tab label="Active" />
         <Tab label="Profit" />
         <Tab label="ROI" />
+        <Tab label="Active" />
       </Tabs>
 
       {minSessions > 1 && (
@@ -381,7 +378,7 @@ export default function LeaderboardPage() {
                         sx={{
                           mt: 0.5,
                           '& .MuiLinearProgress-bar': {
-                            bgcolor: tab !== 0 && entry.value < 0
+                            bgcolor: tab !== 2 && entry.value < 0
                               ? 'error.main'
                               : (idx < 3 ? RANK_COLORS[idx] : 'primary.main'),
                           },
@@ -393,7 +390,7 @@ export default function LeaderboardPage() {
                         <Typography
                           variant="body2"
                           fontWeight={800}
-                          sx={{ color: tab === 0 ? 'text.primary' : entry.value >= 0 ? 'success.main' : 'error.main' }}
+                          sx={{ color: tab === 2 ? 'text.primary' : entry.value >= 0 ? 'success.main' : 'error.main' }}
                         >
                           {formatValue(entry.value, tab)}
                         </Typography>
