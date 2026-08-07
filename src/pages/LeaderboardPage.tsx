@@ -157,7 +157,7 @@ export default function LeaderboardPage() {
     }));
 
     const profit = [...entries]
-      .filter((e) => showAll || e.net > 0)
+      .filter((e) => isMonthly || showAll || e.net > 0)
       .sort((a, b) => b.net - a.net)
       .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.net, sessions: e.sessions }));
 
