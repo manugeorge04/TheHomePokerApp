@@ -13,11 +13,14 @@ import IconButton from '@mui/material/IconButton';
 import Popover from '@mui/material/Popover';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import TuneIcon from '@mui/icons-material/Tune';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
 interface RawPlayer {
   user_id: string;
@@ -52,12 +55,15 @@ function formatMonthLabel(key: string) {
 
 export default function LeaderboardPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.display_name === 'MasterManuver';
   const [tab, setTab] = useState(0);
   const [minSessions, setMinSessions] = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [rawPlayers, setRawPlayers] = useState<RawPlayer[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => monthKey(new Date().toISOString()));
+  const [showProfitableOnly, setShowProfitableOnly] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const loadLeaderboards = useCallback(async () => {
@@ -121,6 +127,7 @@ export default function LeaderboardPage() {
     }));
 
     const profit = [...entries]
+      .filter((e) => !showProfitableOnly || e.net > 0)
       .sort((a, b) => b.net - a.net)
       .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.net, sessions: e.sessions }));
 
@@ -138,7 +145,7 @@ export default function LeaderboardPage() {
       roi.filter((e) => e.sessions >= minSessions),
       active.filter((e) => e.sessions >= minSessions),
     ];
-  }, [rawPlayers, selectedMonth, minSessions]);
+  }, [rawPlayers, selectedMonth, minSessions, showProfitableOnly]);
 
   const currentBoard = boards[tab] ?? [];
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
@@ -165,9 +172,9 @@ export default function LeaderboardPage() {
           onClick={(e) => setAnchorEl(e.currentTarget)}
           aria-label="filter settings"
           sx={{
-            color: minSessions > 1 || selectedMonth !== 'all' ? 'primary.main' : 'text.secondary',
+            color: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && !showProfitableOnly) ? 'primary.main' : 'text.secondary',
             border: '1px solid',
-            borderColor: minSessions > 1 || selectedMonth !== 'all' ? 'primary.main' : 'divider',
+            borderColor: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && !showProfitableOnly) ? 'primary.main' : 'divider',
             borderRadius: 1.5,
             p: 0.75,
           }}
@@ -225,6 +232,19 @@ export default function LeaderboardPage() {
           slotProps={{ htmlInput: { min: 1 } }}
           helperText="Hide players with fewer sessions"
         />
+        {isAdmin && (
+          <FormControlLabel
+            sx={{ mt: 1, mx: 0 }}
+            control={(
+              <Switch
+                size="small"
+                checked={!showProfitableOnly}
+                onChange={(e) => setShowProfitableOnly(!e.target.checked)}
+              />
+            )}
+            label={<Typography variant="body2">Show all profit results</Typography>}
+          />
+        )}
       </Popover>
 
       <Tabs
