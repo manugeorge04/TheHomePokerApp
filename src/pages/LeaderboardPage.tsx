@@ -58,13 +58,16 @@ export default function LeaderboardPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.display_name === 'MasterManuver';
   const [tab, setTab] = useState(0);
-  const [minSessions, setMinSessions] = useState(3);
-  const [inputVal, setInputVal] = useState('3');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => monthKey(new Date().toISOString()));
+  const [minSessionsOverride, setMinSessionsOverride] = useState<number | null>(null);
+  const [inputVal, setInputVal] = useState('');
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [rawPlayers, setRawPlayers] = useState<RawPlayer[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => monthKey(new Date().toISOString()));
   const [showProfitableOnly, setShowProfitableOnly] = useState(true);
   const [loading, setLoading] = useState(true);
+
+  const isMonthly = selectedMonth !== 'all';
+  const minSessions = minSessionsOverride ?? (isMonthly ? 1 : 3);
 
   const loadLeaderboards = useCallback(async () => {
     const { data: players } = await supabase
@@ -159,7 +162,8 @@ export default function LeaderboardPage() {
   function handleMinSessionsChange(raw: string) {
     setInputVal(raw);
     const n = parseInt(raw, 10);
-    if (!isNaN(n) && n >= 1) setMinSessions(n);
+    if (!isNaN(n) && n >= 1) setMinSessionsOverride(n);
+    else if (raw === '') setMinSessionsOverride(null);
   }
 
   return (
@@ -199,6 +203,11 @@ export default function LeaderboardPage() {
             <MenuItem key={m} value={m} sx={{ fontSize: '0.85rem' }}>{formatMonthLabel(m)}</MenuItem>
           ))}
         </TextField>
+        {minSessionsOverride !== null && (
+          <Typography variant="caption" color="primary.main" sx={{ alignSelf: 'center' }}>
+            Min: {minSessionsOverride}
+          </Typography>
+        )}
       </Box>
 
       <Popover
@@ -230,7 +239,7 @@ export default function LeaderboardPage() {
           value={inputVal}
           onChange={(e) => handleMinSessionsChange(e.target.value)}
           slotProps={{ htmlInput: { min: 1 } }}
-          helperText="Hide players with fewer sessions"
+          helperText={isMonthly ? `Defaults to 1 for monthly view` : `Defaults to 3 for All Time`}
         />
         {isAdmin && (
           <FormControlLabel
@@ -263,6 +272,11 @@ export default function LeaderboardPage() {
       {minSessions > 1 && (
         <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1.5 }}>
           Showing players with {minSessions}+ sessions
+        </Typography>
+      )}
+      {minSessions === 1 && minSessionsOverride === null && isMonthly && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Monthly view: showing all players with at least 1 session
         </Typography>
       )}
 
