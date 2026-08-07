@@ -354,7 +354,7 @@ export default function PlayerStatsPage() {
   const [displayName, setDisplayName] = useState('');
   const [allSessions, setAllSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState<Timeframe>('ALL');
+  const [timeframe, setTimeframe] = useState<Timeframe>('1M');
   const [chartGrouping, setChartGrouping] = useState<ChartGrouping>('session');
   const isOwnProfile = userId === user?.id;
 
