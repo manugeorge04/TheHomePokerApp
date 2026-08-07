@@ -70,23 +70,50 @@ export default function LeaderboardPage() {
   const isMonthly = selectedMonth !== 'all';
   const minSessions = minSessionsOverride ?? (isMonthly ? 1 : 3);
 
-  useEffect(() => {
-    let active = true;
-    async function fetchSetting() {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'leaderboard_show_all')
-        .maybeSingle();
-      if (active) {
-        setShowAll(Boolean(data?.value));
-        setShowAllLoading(false);
-      }
+useEffect(() => {
+  let active = true;
+
+  // 1. Initial fetch of current setting
+  async function fetchSetting() {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'leaderboard_show_all')
+      .maybeSingle();
+
+    if (active && data) {
+      setShowAll(Boolean(data.value));
+      setShowAllLoading(false);
     }
-    fetchSetting();
-    const interval = setInterval(fetchSetting, 5000);
-    return () => { active = false; clearInterval(interval); };
-  }, []);
+  }
+
+  fetchSetting();
+
+  // 2. Subscribe to realtime updates on app_settings table
+  const channel = supabase
+    .channel('app_settings_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'app_settings',
+        filter: 'key=eq.leaderboard_show_all',
+      },
+      (payload) => {
+        if (payload.new && typeof payload.new.value === 'boolean') {
+          setShowAll(payload.new.value);
+        }
+      }
+    )
+    .subscribe();
+
+  // 3. Clean up subscription on unmount
+  return () => {
+    active = false;
+    supabase.removeChannel(channel);
+  };
+}, []);
 
   async function toggleShowAll(next: boolean) {
     setShowAll(next);
