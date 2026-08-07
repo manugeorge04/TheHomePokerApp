@@ -56,7 +56,7 @@ function formatMonthLabel(key: string) {
 export default function LeaderboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const isAdmin = profile?.display_name === 'MasterManuver';
+  const isAdmin = profile?.display_name === 'Master Manuver';
   const [tab, setTab] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => monthKey(new Date().toISOString()));
   const [minSessionsOverride, setMinSessionsOverride] = useState<number | null>(null);
