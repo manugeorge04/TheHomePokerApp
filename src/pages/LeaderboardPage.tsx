@@ -63,11 +63,38 @@ export default function LeaderboardPage() {
   const [inputVal, setInputVal] = useState('');
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [rawPlayers, setRawPlayers] = useState<RawPlayer[]>([]);
-  const [showProfitableOnly, setShowProfitableOnly] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const [showAllLoading, setShowAllLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const isMonthly = selectedMonth !== 'all';
   const minSessions = minSessionsOverride ?? (isMonthly ? 1 : 3);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchSetting() {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'leaderboard_show_all')
+        .maybeSingle();
+      if (active) {
+        setShowAll(Boolean(data?.value));
+        setShowAllLoading(false);
+      }
+    }
+    fetchSetting();
+    const interval = setInterval(fetchSetting, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
+
+  async function toggleShowAll(next: boolean) {
+    setShowAll(next);
+    await supabase
+      .from('app_settings')
+      .update({ value: next, updated_at: new Date().toISOString(), updated_by: profile?.id ?? null })
+      .eq('key', 'leaderboard_show_all');
+  }
 
   const loadLeaderboards = useCallback(async () => {
     const { data: players } = await supabase
@@ -130,7 +157,7 @@ export default function LeaderboardPage() {
     }));
 
     const profit = [...entries]
-      .filter((e) => !showProfitableOnly || e.net > 0)
+      .filter((e) => showAll || e.net > 0)
       .sort((a, b) => b.net - a.net)
       .map((e) => ({ user_id: e.user_id, display_name: e.display_name, value: e.net, sessions: e.sessions }));
 
@@ -148,7 +175,7 @@ export default function LeaderboardPage() {
       roi.filter((e) => e.sessions >= minSessions),
       active.filter((e) => e.sessions >= minSessions),
     ];
-  }, [rawPlayers, selectedMonth, minSessions, showProfitableOnly]);
+  }, [rawPlayers, selectedMonth, minSessions, showAll]);
 
   const currentBoard = boards[tab] ?? [];
   const maxVal = currentBoard.length > 0 ? Math.abs(currentBoard[0].value) : 1;
@@ -176,9 +203,9 @@ export default function LeaderboardPage() {
           onClick={(e) => setAnchorEl(e.currentTarget)}
           aria-label="filter settings"
           sx={{
-            color: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && !showProfitableOnly) ? 'primary.main' : 'text.secondary',
+            color: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && showAll) ? 'primary.main' : 'text.secondary',
             border: '1px solid',
-            borderColor: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && !showProfitableOnly) ? 'primary.main' : 'divider',
+            borderColor: minSessions > 1 || selectedMonth !== 'all' || (isAdmin && showAll) ? 'primary.main' : 'divider',
             borderRadius: 1.5,
             p: 0.75,
           }}
@@ -247,11 +274,12 @@ export default function LeaderboardPage() {
             control={(
               <Switch
                 size="small"
-                checked={!showProfitableOnly}
-                onChange={(e) => setShowProfitableOnly(!e.target.checked)}
+                checked={showAll}
+                disabled={showAllLoading}
+                onChange={(e) => toggleShowAll(e.target.checked)}
               />
             )}
-            label={<Typography variant="body2">Show all profit results</Typography>}
+            label={<Typography variant="body2">Show all</Typography>}
           />
         )}
       </Popover>
