@@ -71,6 +71,13 @@ interface Stats {
   timesFirst: number;
 }
 
+const TIMEFRAME_LABELS: Record<Timeframe, string> = {
+  '1M': 'Past Month Net Profit',
+  '6M': 'Past 6 Months Net Profit',
+  '1Y': 'Past Year Net Profit',
+  'ALL': 'Lifetime Net Profit',
+};
+
 const GREEN = '#4ade80';
 const RED = '#f87171';
 const AXIS_COLOR = 'rgba(134,239,172,0.5)';
@@ -477,7 +484,7 @@ export default function StatsPage() {
               <Typography variant="h3" fontWeight={800} sx={{ color: stats.netProfit >= 0 ? 'success.main' : 'error.main' }}>
                 {formatMoney(stats.netProfit)}
               </Typography>
-              <Typography variant="body2" color="text.secondary">Lifetime Net Profit</Typography>
+              <Typography variant="body2" color="text.secondary">{TIMEFRAME_LABELS[timeframe]}</Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 1.5 }}>
                 <Chip
                   label={`ROI ${stats.roi >= 0 ? '+' : ''}${stats.roi.toFixed(1)}%`}
