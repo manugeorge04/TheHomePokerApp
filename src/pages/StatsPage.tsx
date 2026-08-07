@@ -362,7 +362,7 @@ export default function StatsPage() {
   const { user, profile } = useAuth();
   const [allSessions, setAllSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState<Timeframe>('ALL');
+  const [timeframe, setTimeframe] = useState<Timeframe>('1M');
   const [chartGrouping, setChartGrouping] = useState<ChartGrouping>('session');
 
   const loadStats = useCallback(async () => {
